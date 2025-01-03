@@ -28,7 +28,7 @@ class ParamBlockDiagonalKoopman(nn.Module):
             Returns the matrix V.
     """
 
-    def __init__(self, koopman_dim, v_dim = None):
+    def __init__(self, koopman_dim, v_dim = None, layers = [1, 1, 1]):
         super(ParamBlockDiagonalKoopman, self).__init__()
         self.koopman_dim = koopman_dim
         self.num_blocks = self.koopman_dim // 2 
@@ -36,6 +36,7 @@ class ParamBlockDiagonalKoopman(nn.Module):
             self.v_dim = self.koopman_dim
         else:
             self.v_dim = v_dim
+        self.layers = layers
         self.build()
 
     def build(self):
