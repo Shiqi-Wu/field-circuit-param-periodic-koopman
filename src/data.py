@@ -152,7 +152,9 @@ def get_evaluation_dataset(data_dir, save_dir, validation_split=0.2):
     data_list, params_list, inputs_list = [], [], []
     for file in os.listdir(data_dir):
         if file.endswith('.npy'):
-            ff = np.load(os.path.join(data_dir, file))
+            ff = np.load(os.path.join(data_dir, file), allow_pickle=True)
+            ff = ff.item()
+            
             data_list.append(ff['data'])
             params_list.append(ff['params'])
             inputs_list.append(ff['inputs'])

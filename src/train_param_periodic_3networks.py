@@ -7,14 +7,13 @@ torch.set_default_dtype(torch.float64)
 from tqdm import tqdm
 from src.args import parse_arguments, read_config_file
 from src.data import get_dataset
-from src.param_perodic_koopman import ParamBlockDiagonalKoopmanWithInputs
-
+from src.param_periodic_koopman import ParamBlockDiagonalKoopmanWithInputs3NetWorks
 
 def koopman_loss(model, x_true, params, inputs, sample_step=1):
     # 计算 x_dic_true
     x_dic_true = []
     for i in range(x_true.shape[1]):
-        x_dic_true.append(model.dictionary_V(x_true[:, i, :], params[:, i, :],sample_step))
+        x_dic_true.append(model.dictionary_V(x_true[:, i, :], params[:, i, :]))
     x_dic_true = torch.stack(x_dic_true, dim=1)  # [batch_size, sequence_length, feature_dim]
     
     
@@ -32,8 +31,12 @@ def koopman_loss(model, x_true, params, inputs, sample_step=1):
     y_dic_pred = torch.stack(y_dic_pred, dim=1)  # [batch_size, sequence_length, feature_dim]
     
     # 计算损失
-    loss = F.mse_loss(y_dic_pred, x_dic_true)
-    return loss
+    reg_loss,  norm_V_inv =  model.regularization_loss(params[:,0,:])
+    mse_loss = torch.sum(norm_V_inv * F.mse_loss(y_dic_pred, x_dic_true, reduction='none').mean(dim=(1, 2)))
+
+    loss = mse_loss + reg_loss
+
+    return loss, mse_loss, reg_loss
 
 
 # def train_one_epoch(model, optimizer, train_loader, device, epoch, sample_step=1):
@@ -67,7 +70,7 @@ def koopman_loss(model, x_true, params, inputs, sample_step=1):
 
 def train_one_epoch(model, optimizer, train_loader, device, epoch, sample_step=1):
     model.train()
-    total_loss = 0.0
+    total_loss, total_mse_loss, total_reg_loss = 0.0, 0.0, 0.0
 
     for batch_idx, (x_true, params, inputs) in enumerate(train_loader):
         # Move data to the appropriate device
@@ -77,7 +80,7 @@ def train_one_epoch(model, optimizer, train_loader, device, epoch, sample_step=1
         optimizer.zero_grad()
 
         # Compute loss
-        loss = koopman_loss(model, x_true, params, inputs, sample_step)
+        loss, mse_loss, reg_loss = koopman_loss(model, x_true, params, inputs, sample_step)
 
         # Backpropagation and optimization step
         loss.backward()
@@ -85,43 +88,60 @@ def train_one_epoch(model, optimizer, train_loader, device, epoch, sample_step=1
 
         # Update the total loss
         total_loss += loss.item()
+        total_reg_loss += reg_loss.item()
+        total_mse_loss += mse_loss.item()
 
-    return total_loss / len(train_loader)
+    return total_loss / len(train_loader), total_mse_loss / len(train_loader), total_reg_loss / len(train_loader)
 
 
 def test_one_epoch(model, test_loader, device, sample_step=1):
     model.eval()
-    total_loss = 0.0
+    total_loss, total_mse_loss, total_reg_loss = 0.0, 0.0, 0.0
     with torch.no_grad():
         for x_true, params, inputs in test_loader:
             x_true, params, inputs = x_true.to(device), params.to(device), inputs.to(device)
-            loss = koopman_loss(model, x_true, params, inputs, sample_step)
+            loss, mse_loss, reg_loss = koopman_loss(model, x_true, params, inputs, sample_step)
             total_loss += loss.item()
-    return total_loss / len(test_loader)
+            total_reg_loss += reg_loss.item()
+            total_mse_loss += mse_loss.item()
+    return total_loss / len(test_loader), total_mse_loss / len(test_loader), total_reg_loss / len(test_loader)
 
 def train(model, optimizer, steplr, train_loader, test_loader, device, epochs, sample_step=1):
     train_losses = []
     test_losses = []
+    train_mse_losses, test_mse_losses = [], []
+    train_reg_losses, test_reg_losses = [], []
 
     # Wrap the epochs loop with tqdm for a progress bar
     progress_bar = tqdm(range(epochs), desc="Training Progress")
 
     for epoch in progress_bar:
         # Train for one epoch
-        train_loss = train_one_epoch(model, optimizer, train_loader, device, epoch, sample_step)
+        train_loss, train_mse_loss, train_reg_loss = train_one_epoch(model, optimizer, train_loader, device, epoch, sample_step)
 
         # Test after the epoch
-        test_loss = test_one_epoch(model, test_loader, device, sample_step)
+        test_loss, test_mse_loss, test_reg_loss = test_one_epoch(model, test_loader, device, sample_step)
 
         train_losses.append(train_loss)
         test_losses.append(test_loss)
+        train_mse_losses.append(train_mse_loss)
+        test_mse_losses.append(test_mse_loss)
+        train_reg_losses.append(train_reg_loss)
+        test_reg_losses.append(test_reg_loss)
 
         steplr.step()
 
         # Update the progress bar with the current epoch's losses
-        progress_bar.set_postfix({"Train Loss": train_loss, "Test Loss": test_loss})
+        progress_bar.set_postfix({
+            "Train Loss": f"{train_loss:.3e}", 
+            "Test Loss": f"{test_loss:.3e}", 
+            "Train MSE Loss": f"{train_mse_loss:.3e}", 
+            "Test MSE Loss": f"{test_mse_loss:.3e}", 
+            "Train Reg Loss": f"{train_reg_loss:.3e}", 
+            "Test Reg Loss": f"{test_reg_loss:.3e}"
+        })
 
-    return train_losses, test_losses
+    return train_losses, test_losses, train_mse_losses, test_mse_losses, train_reg_losses, test_reg_losses
 
 def main():
     # Set the device
@@ -131,6 +151,8 @@ def main():
     args = parse_arguments()
     config = read_config_file(args.config)
     save_dir = config["save_dir"]
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
 
     # Load the dataset
     data_dir = config["data_dir"]
@@ -156,7 +178,7 @@ def main():
         params_dim = params.shape[-1]
         break
     
-    model = ParamBlockDiagonalKoopmanWithInputs(state_dim, config["dictionary_dim"], inputs_dim, params_dim, config["dictionary_layers"], config["A_layers"], config["B_layers"])
+    model = ParamBlockDiagonalKoopmanWithInputs3NetWorks(state_dim, config["dictionary_dim"], inputs_dim, params_dim, config["dictionary_layers"], config["Lambda_layers"], config["V_layers"], config["B_layers"])
 
     model.to(device)
 
@@ -165,13 +187,13 @@ def main():
     steplr = torch.optim.lr_scheduler.StepLR(optimizer, step_size=config["step_size_lr"], gamma=config["gamma_lr"])
 
     # Train the model
-    train_losses, test_losses = train(model, optimizer, steplr, train_loader, test_loader, device, config["epochs"], config["sample_step"])
+    train_losses, test_losses, train_mse_losses, test_mse_losses, train_reg_losses, test_reg_losses= train(model, optimizer, steplr, train_loader, test_loader, device, config["epochs"], config["sample_step"])
 
     # Save the model
     torch.save(model, os.path.join(save_dir, "model.pth"))
 
     # Save the losses
-    losses = {"train_losses": train_losses, "test_losses": test_losses}
+    losses = {"train_losses": train_losses, "test_losses": test_losses, "train_mse_losses": train_mse_losses, "test_mse_losses": test_mse_losses, "train_reg_losses": train_reg_losses, "test_reg_losses": test_reg_losses}
     torch.save(losses, os.path.join(save_dir, "losses.pth"))
     
     return

@@ -4,7 +4,7 @@ import numpy as np
 from src.data import get_evaluation_dataset
 from src.args import parse_arguments, read_config_file
 torch.set_default_dtype(torch.float64)
-from src.param_perodic_koopman import ParamBlockDiagonalKoopmanWithInputs
+from src.param_periodic_koopman import ParamBlockDiagonalKoopmanWithInputs
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -29,6 +29,8 @@ def evaluate_model(model, data_list, params_list, inputs_list, dataset, lidation
 
     data_pred_list = []
 
+    model.eval()
+
    # Evaluate the model
     for data, params, inputs in zip(data_list, params_list, inputs_list):
         data = torch.tensor(data).to(device)
@@ -36,18 +38,23 @@ def evaluate_model(model, data_list, params_list, inputs_list, dataset, lidation
         inputs = torch.tensor(inputs).to(device)
         data_initial = data[0].unsqueeze(0)
         data_initial = dataset._pca_transform(data_initial)
+        pca_dim = data_initial.shape[1]
         params_scaled = dataset._transform_data(params, dataset.params_mean, dataset.params_std)
         inputs_scaled = dataset._transform_data(inputs, dataset.inputs_mean, dataset.inputs_std)
-        data_psi_initail = model(data_initial, inputs[0:1, :], params_scaled[0:1,:], sample_step)
+        data_psi_initail = model.dictionary_V(data_initial, params_scaled[0:1,:])
         data_psi_pred = torch.zeros(data.shape[0], data_psi_initail.shape[1])
         data_psi_pred[0] = data_psi_initail
         for i in range(1, data.shape[0]):
             data_psi_pred[i] = model(data_psi_pred[i-1].unsqueeze(0), inputs_scaled[i-1:i :], params_scaled[i-1:i, :], sample_step)
 
         _, V = model.A_matrix(params_scaled[0:1, :])
+        # print(V.shape)
+        V = V.squeeze(0)
         V_inv = torch.inverse(V)
         data_pred = torch.mm(data_psi_pred, V_inv)
-        data_pred = dataset._inverse_pca_transform(data_pred)
+        # print(data_pred.shape)
+        data_pred = data_pred[:, 1:pca_dim+1].detach().cpu()
+        data_pred = dataset._inverse_pca_transform(data_pred).numpy()
         data_pred_list.append(data_pred)
     
     return data_list, data_pred_list
@@ -105,7 +112,7 @@ def plot_trajectories(x_true_traj, x_pred_traj, labels, filename):
         y_min, y_max = np.min(y_all), np.max(y_all)
 
         axs[i, 0].plot(x_true_traj[traj][:, idx], label=labels_plot[0], color=custom_palette[0])
-        axs[i, 0].plot(x_pred_traj[traj][:, idx], label=labels_plot[1], color=custom_palette[1])
+        axs[i, 0].plot(x_pred_traj[traj][:, idx], label=labels_plot[1], color=custom_palette[2])
         axs[i, 0].set_title(f'Traj {traj}, All Models')
         axs[i, 0].set_xlabel('Prediction Step')
         axs[i, 0].set_ylabel('$\Phi_{loop}$')
@@ -118,7 +125,7 @@ def plot_trajectories(x_true_traj, x_pred_traj, labels, filename):
         axs[i, 1].tick_params(labelleft=False)
         axs[i, 1].set_ylabel('')
 
-        axs[i, 2].plot(x_pred_traj[traj][:, idx], label=labels_plot[4], color=custom_palette[4])
+        axs[i, 2].plot(x_pred_traj[traj][:, idx], label=labels_plot[1], color=custom_palette[2])
         axs[i, 2].set_title(f'Traj {traj}, Predicted Trajectory')
         axs[i, 2].set_xlabel('Prediction Step')
         axs[i, 2].set_ylim(y_min, y_max)
@@ -136,27 +143,49 @@ def main():
     args = parse_arguments()
     config = read_config_file(args.config)
 
+    # Set the device
+    device = torch.device('cpu')
+
     # Loss history
-    loss_history = np.load(os.path.join(config["save_dir"], "losses.pth"))
+    loss_history = torch.load(os.path.join(config["save_dir"], "losses.pth"))
     plt.figure()
-    plt.plot(loss_history['train_losses'], label='Train', color=custom_palette[2])
-    plt.plot(loss_history['test_losses'], label='Test', color=custom_palette[3])
+    plt.plot(loss_history['train_losses'], label='Train Loss', color=custom_palette[2])
+    plt.plot(loss_history['test_losses'], label='Test Loss', color=custom_palette[3])
+    
     plt.legend()
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.yscale('log')
     plt.savefig(os.path.join(config["save_dir"], "losses.png"))
 
+    plt.figure()
+    plt.plot(loss_history['train_mse_losses'], label='Train MSE Loss', color=custom_palette[4])
+    plt.plot(loss_history['test_mse_losses'], label='Test MSE Loss', color=custom_palette[5])
+    plt.legend()
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.yscale('log')
+    plt.savefig(os.path.join(config["save_dir"], "mse_losses.png"))
+
+    plt.figure()
+    plt.plot(loss_history['train_reg_losses'], label='Train Reg Loss', color=custom_palette[6])
+    plt.plot(loss_history['test_reg_losses'], label='Test Reg Loss', color=custom_palette[7])
+    plt.legend()
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.savefig(os.path.join(config["save_dir"], "reg_losses.png"))
+
     # Load the model
     model = torch.load(os.path.join(config["save_dir"], "model.pth"))
+    model.to(device)
 
     # Evaluate the model
 
     data_list_train, params_list_train, inputs_list_train, data_list_test, params_list_test, inputs_list_test, dataset = get_evaluation_dataset(config['data_dir'], config['save_dir'], config['validation_split'])
 
-    data_list_train, data_pred_list_train = evaluate_model(model, data_list_train, params_list_train, inputs_list_train, dataset, sample_step=1)
+    data_list_train, data_pred_list_train = evaluate_model(model, data_list_train, params_list_train, inputs_list_train, dataset, config['sample_step'])
 
-    data_list_test, data_pred_list_test = evaluate_model(model, data_list_test, params_list_test, inputs_list_test, dataset, sample_step=1)
+    data_list_test, data_pred_list_test = evaluate_model(model, data_list_test, params_list_test, inputs_list_test, dataset, config['sample_step'])
 
     # Calculate the mean relative difference
     mean_relative_diffs_train = calculate_mean_relative_diff_set(data_list_train, data_pred_list_train)
@@ -176,9 +205,16 @@ def main():
     mean_relative_errors_test = calculate_mean_relative_error_set(data_list_test, data_pred_list_test)
     # Plot the mean relative error
     plt.figure()
-    plt.boxplot([mean_relative_errors_train, mean_relative_errors_test], labels=['Train', 'Test'], color=[custom_palette[2], custom_palette[3]])
-    plt.ylabel('Mean Relative Error')
+    boxplot = plt.boxplot(
+    [mean_relative_errors_train, mean_relative_errors_test], 
+    labels=['Train', 'Test'], 
+    patch_artist=True  # 允许填充颜色
+)
+    colors = [custom_palette[2], custom_palette[3]]
+    for patch, color in zip(boxplot['boxes'], colors):
+        patch.set_facecolor(color)
     plt.yscale('log')
+    plt.ylabel("Relative Error")
     plt.savefig(os.path.join(config['save_dir'], 'mean_relative_error.png'))
 
     # Plot the trajectories
@@ -203,9 +239,6 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-    
 
         
         
