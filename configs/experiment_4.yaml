@@ -1,0 +1,16 @@
+save_dir: '/home/shiqi/code/Project2-sensor-case/field-circuit-param-periodic-koopman/results/experiment_4'
+data_dir: '/home/shiqi/code/Project2-sensor-case/field-circuit-param-periodic-koopman/data/differentMur'
+step_size: 10
+sample_step: 1
+pca_dim: 4
+batch_size: 256
+validation_split: 0.2
+dictionary_dim: 45
+dictionary_layers: [2, 2, 2]
+A_layers: [2, 2, 2]
+B_layers: [2, 2, 2]
+lr: 0.001
+step_size_lr: 200
+gamma_lr: 0.9
+epochs: 5000
+description: This is the second experiment. We will use the same data as in the first experiment, but we use a regularizer to control the condition number of the matrix V. The hyperparameter for the regularizer is set to 0.00001.

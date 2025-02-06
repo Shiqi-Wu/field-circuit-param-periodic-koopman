@@ -27,6 +27,25 @@ class BasicBlock(nn.Module):
         out = F.relu(out)
         return out
 
+class BasicBlock2(nn.Module):
+    def __init__(self, in_features, out_features):
+        super(BasicBlock2, self).__init__()
+        self.fc1 = nn.Linear(in_features, out_features)
+        self.fc2 = nn.Linear(out_features, out_features)
+
+        self.shortcut = nn.Sequential()
+        if in_features != out_features:
+            self.shortcut = nn.Sequential(
+                nn.Linear(in_features, out_features)  # 直接线性变换，无 BatchNorm
+            )
+
+    def forward(self, x):
+        out = F.relu(self.fc1(x))  # 直接 ReLU，无 BatchNorm
+        out = self.fc2(out)
+        out += self.shortcut(x)
+        out = F.relu(out)
+        return out
+
 class ResNet(nn.Module):
     def __init__(self, block, num_blocks, input_dim, dictionary_dim=128):
         super(ResNet, self).__init__()
@@ -50,7 +69,11 @@ class ResNet(nn.Module):
         out = self.layer3(out)
         out = self.linear(out)
         return out
-
+    
+    def initialize_weights_to_zero(self):
+        """ 将所有参数初始化为 0 """
+        for param in self.parameters():
+            nn.init.constant_(param, 0)
 class TrainableDictionary(nn.Module):
     """
     A neural network module that builds a trainable dictionary for input data.

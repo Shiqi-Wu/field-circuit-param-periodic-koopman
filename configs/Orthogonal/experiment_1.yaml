@@ -1,0 +1,17 @@
+save_dir: '/home/shiqi/code/Project2-sensor-case/field-circuit-param-periodic-koopman/results/Orthogonal/experiment_1'
+data_dir: '/home/shiqi/code/Project2-sensor-case/field-circuit-param-periodic-koopman/data/differentMur'
+step_size: 20
+sample_step: 1
+pca_dim: 4
+batch_size: 256
+validation_split: 0.2
+dictionary_dim: 45
+dictionary_layers: [2, 2, 2]
+Q_layers: [2, 2, 2]
+T_layers: [2, 2, 2]
+B_layers: [2, 2, 2]
+lr: 0.001
+step_size_lr: 200
+gamma_lr: 0.9
+epochs: 5000
+description: This is the 1st experiment. We will use the same data as in the first experiment. We use skew-symmetric matrices to construct orthogonal matrices Q. The step size is 20.

@@ -8,6 +8,7 @@ from tqdm import tqdm
 from src.args import parse_arguments, read_config_file
 from src.data import get_dataset
 from src.param_periodic_koopman import ParamBlockDiagonalKoopmanWithInputs
+import time
 
 def koopman_loss(model, x_true, params, inputs, sample_step=1):
     # 计算 x_dic_true
@@ -70,7 +71,7 @@ def koopman_loss(model, x_true, params, inputs, sample_step=1):
 #     return total_loss / len(train_loader)
 
 def train_one_epoch(model, optimizer, train_loader, device, epoch, sample_step=1):
-    model.train()
+    model.eval()
     total_loss, total_mse_loss, total_reg_loss = 0.0, 0.0, 0.0
 
     for batch_idx, (x_true, params, inputs) in enumerate(train_loader):
@@ -85,6 +86,7 @@ def train_one_epoch(model, optimizer, train_loader, device, epoch, sample_step=1
 
         # Backpropagation and optimization step
         loss.backward()
+        # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
 
         # Update the total loss
@@ -101,8 +103,15 @@ def test_one_epoch(model, test_loader, device, sample_step=1):
     with torch.no_grad():
         for x_true, params, inputs in test_loader:
             x_true, params, inputs = x_true.to(device), params.to(device), inputs.to(device)
+            # if torch.any(x_true > 1e8):
+            #     print("Find x_true > 1e8")
+            # if torch.any(params > 1e8):
+            #     print("Find params > 1e8")
+            # if torch.any(inputs > 1e8):
+            #     print("Find inputs > 1e8")
             loss, mse_loss, reg_loss = koopman_loss(model, x_true, params, inputs, sample_step)
             total_loss += loss.item()
+            # print(f"loss: {loss.item()}")
             total_reg_loss += reg_loss.item()
             total_mse_loss += mse_loss.item()
     return total_loss / len(test_loader), total_mse_loss / len(test_loader), total_reg_loss / len(test_loader)
@@ -180,6 +189,7 @@ def main():
         break
     
     model = ParamBlockDiagonalKoopmanWithInputs(state_dim, config["dictionary_dim"], inputs_dim, params_dim, config["dictionary_layers"], config["A_layers"], config["B_layers"])
+    model.B_matrix.resnet.initialize_weights_to_zero()
 
     model.to(device)
 
@@ -187,11 +197,25 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
     steplr = torch.optim.lr_scheduler.StepLR(optimizer, step_size=config["step_size_lr"], gamma=config["gamma_lr"])
 
+    log_file = os.path.join(save_dir, "log.txt")
+    with open(log_file, "w") as f:
+        f.write(f"Model: {model}\n")
+        f.write(f"Optimizer: {optimizer}\n")
+        f.write(f"StepLR: {steplr}\n")
+        f.write(f"Device: {device}\n")
+        f.write(f"Config: {config}\n")
+
     # Train the model
+    start_time = time.time()
     train_losses, test_losses, train_mse_losses, test_mse_losses, train_reg_losses, test_reg_losses= train(model, optimizer, steplr, train_loader, test_loader, device, config["epochs"], config["sample_step"])
+    end_time = time.time()
+
+    with open(log_file, "a") as f:
+        epoches = config["epochs"]
+        f.write(f"Training time for {epoches} epoches is: {end_time - start_time:.2f}s\n")
 
     # Save the model
-    torch.save(model, os.path.join(save_dir, "model.pth"))
+    torch.save(model.state_dict(), os.path.join(save_dir, "model_state_dict.pth"))
 
     # Save the losses
     losses = {"train_losses": train_losses, "test_losses": test_losses, "train_mse_losses": train_mse_losses, "test_mse_losses": test_mse_losses, "train_reg_losses": train_reg_losses, "test_reg_losses": test_reg_losses}

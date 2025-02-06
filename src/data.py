@@ -27,6 +27,8 @@ class CustomDataset(Dataset):
         self.inputs_mean, self.inputs_std, inputs_list = self._fit_transform_data_list(inputs_list)
         self.data_mean, self.data_std, self.data_pca_mean, self.data_pca_std, data_pca_list, self.pca = self._pca_fit_transform(data_list, pca_dim)
 
+        # print(params_list[0])
+
         data_slices, params_slices, inputs_slices = self._cut_slices(data_pca_list, params_list, inputs_list, step_size)
         return data_slices, params_slices, inputs_slices
 
@@ -38,6 +40,7 @@ class CustomDataset(Dataset):
         params_list = self._transform_data_list(params_list, self.params_mean, self.params_std)
         inputs_list = self._transform_data_list(inputs_list, self.inputs_mean, self.inputs_std)
         data_pca_list = self._pca_transform_list(data_list)
+        # print(params_list[0])
 
         data_slices, params_slices, inputs_slices = self._cut_slices(data_pca_list, params_list, inputs_list, step_size)
         return data_slices, params_slices, inputs_slices
@@ -87,18 +90,20 @@ class CustomDataset(Dataset):
     def _inverse_pca_transform_list(self, data_pca_list):
         return [self._inverse_pca_transform(d) for d in data_pca_list]
 
-    def _fit_transform_data_list(self, data_list):
+    def _fit_transform_data_list(self, data_list, epsilon=1e-8):
         data = torch.cat([d.unsqueeze(0) for d in data_list], dim=0)
         data_mean = data.mean(dim=0)
         data_std = data.std(dim=0)
+        data_std[data_std < epsilon] = 1
         data_list = [(d - data_mean) / data_std for d in data_list]
         return data_mean, data_std, data_list
 
-    def _transform_data(self, data, data_mean, data_std):
+    def _transform_data(self, data, data_mean, data_std, epsilon=1e-8):
+        # data_std[data_std < epsilon] = 1
         return (data - data_mean) / data_std
 
     def _transform_data_list(self, data_list, data_mean, data_std):
-        return [(d - data_mean) / data_std for d in data_list]
+        return [self._transform_data(d, data_mean, data_std) for d in data_list]
 
     def _inverse_transform_data(self, data, data_mean, data_std):
         return data * data_std + data_mean
@@ -135,12 +140,22 @@ def get_dataset(data_dir, step_size, pca_dim, batch_size=256, validation_split=0
         data_list, params_list, inputs_list, test_size=validation_split, random_state=42)
 
     dataset = CustomDataset()
+    # training_data, training_params, training_inputs = dataset._build_training_dataset(data_list_train, params_list_train, inputs_list_train, step_size, pca_dim)
     training_data, training_params, training_inputs = dataset._build_training_dataset(data_list_train, params_list_train, inputs_list_train, step_size, pca_dim)
     testing_data, testing_params, testing_inputs = dataset._build_testing_dataset(data_list_test, params_list_test, inputs_list_test, step_size)
+    # print(training_inputs[0])
+    # print(testing_inputs[0])
+
     training_data = torch.tensor(training_data, dtype=torch.float64)
     training_params = torch.tensor(training_params, dtype=torch.float64)
     training_inputs = torch.tensor(training_inputs, dtype=torch.float64)
     testing_data = torch.tensor(testing_data, dtype=torch.float64)
+    testing_params = torch.tensor(testing_params, dtype=torch.float64)
+    testing_inputs = torch.tensor(testing_inputs, dtype=torch.float64)
+    indices = torch.randperm(training_data.size(0))
+    training_data = training_data[indices]
+    training_params = training_params[indices]
+    training_inputs = training_inputs[indices]
     training_dataset = torch.utils.data.TensorDataset(training_data, training_params, training_inputs)
     testing_dataset = torch.utils.data.TensorDataset(testing_data, testing_params, testing_inputs)
     training_loader = torch.utils.data.DataLoader(training_dataset, batch_size=batch_size, shuffle=True)
