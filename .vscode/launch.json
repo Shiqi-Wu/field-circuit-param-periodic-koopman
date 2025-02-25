@@ -1,0 +1,40 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Module-src.train_param_perodic_orthogonal",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.train_param_periodic_orthogonal",
+            "args": [
+                "--config",
+                "/home/shiqi/code/Project2-sensor-case/field-circuit-param-periodic-koopman/configs/Orthogonal/experiment_1.yaml",
+            ]
+        },
+        {
+            "name": "Python Debugger: Module-src.train_param_perodic",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.train_param_perodic",
+            "console": "integratedTerminal",
+            "args": [
+                "--config",
+                "/home/shiqi/code/Project2-sensor-case/field-circuit-param-periodic-koopman/configs/experiment_1.yaml",
+            ]
+        },
+        {
+            "name": "Python Debugger: Module-src.eval_param_periodic",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.eval_param_periodic",
+            "console": "integratedTerminal",
+            "args": [
+                "--config",
+                "/home/shiqi/code/Project2-sensor-case/field-circuit-param-periodic-koopman/configs/experiment_1.yaml",
+            ]
+        }
+    ]
+}
