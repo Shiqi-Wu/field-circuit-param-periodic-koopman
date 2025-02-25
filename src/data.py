@@ -12,6 +12,8 @@ import torch
 from torch.utils.data import Dataset
 import numpy as np
 from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
+
 
 class CustomDataset(Dataset):
     def __init__(self):
@@ -57,6 +59,17 @@ class CustomDataset(Dataset):
         pca = PCA(n_components=pca_dim)
         data_np = data.numpy()
         data_pca_np = pca.fit_transform(data_np.reshape(-1, data_np.shape[-1]))
+        explained_variance_ratio = pca.explained_variance_ratio_
+        explained_variance = np.sum(explained_variance_ratio)
+        print(f"Explained variance by PCA: {explained_variance * 100:.2f}%")
+
+        plt.figure(figsize=(8, 6))
+        plt.plot(np.cumsum(explained_variance_ratio), marker='o')
+        plt.xlabel('Number of Components')
+        plt.ylabel('Cumulative Explained Variance')
+        plt.title('Explained Variance by PCA Components')
+        plt.grid(True)
+        plt.show()
         data_pca = torch.tensor(data_pca_np, dtype=torch.float64)
         data_pca_mean = data_pca.mean(dim=0)
         data_pca_std = data_pca.std(dim=0)
@@ -178,6 +191,6 @@ def get_evaluation_dataset(data_dir, save_dir, validation_split=0.2):
         data_list, params_list, inputs_list, test_size=validation_split, random_state=42)
     
     dataset_dir = os.path.join(save_dir, "dataset.pth")
-    dataset = torch.load(dataset_dir)
+    dataset = torch.load(dataset_dir, weights_only=False)
 
     return data_list_train, params_list_train, inputs_list_train, data_list_test, params_list_test, inputs_list_test, dataset    

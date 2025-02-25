@@ -4,7 +4,7 @@ import numpy as np
 from src.data import get_evaluation_dataset
 from src.args import parse_arguments, read_config_file
 torch.set_default_dtype(torch.float64)
-from src.param_periodic_koopman import ParamBlockDiagonalKoopmanWithInputs
+from src.param_periodic_koopman import ParamKoopmanWithInputs
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -32,7 +32,10 @@ def evaluate_model(model, data_list, params_list, inputs_list, dataset, lidation
     model.eval()
 
    # Evaluate the model
+    idx = 0
     for data, params, inputs in zip(data_list, params_list, inputs_list):
+        print(f"\n=== Processing sample {idx+1}/{len(data_list)} ===")
+        idx += 1
         data = torch.tensor(data).to(device)
         params = torch.tensor(params).to(device)
         inputs = torch.tensor(inputs).to(device)
@@ -45,7 +48,8 @@ def evaluate_model(model, data_list, params_list, inputs_list, dataset, lidation
         data_psi_pred = torch.zeros(data.shape[0], data_psi_initail.shape[1])
         data_psi_pred[0] = data_psi_initail
         for i in range(1, data.shape[0]):
-            data_psi_pred[i] = model(data_psi_pred[i-1].unsqueeze(0), inputs_scaled[i-1:i :], params_scaled[i-1:i, :])
+            inputs_dic = model.u_dictionary(inputs_scaled[i-1:i, :])
+            data_psi_pred[i] = model(data_psi_pred[i-1].unsqueeze(0), inputs_dic, params_scaled[i-1:i, :])
             
             # coordinate projection
             data_psi_pred[i] = model.dictionary(model.coordinate_projection(data_psi_pred[i].unsqueeze(0)))
@@ -158,8 +162,13 @@ def main():
 
 
     # Load the model
-    model = torch.load(os.path.join(config["save_dir"], "model.pth"))
+    state_dim = config['pca_dim']
+    inputs_dim, params_dim = config['inputs_dim'], config['params_dim']
+
+    model = ParamKoopmanWithInputs(state_dim, config["dictionary_dim"], inputs_dim, config["u_dictionary_dim"], params_dim, config["dictionary_layers"], config["u_layers"], config["A_layers"], config["B_layers"], config["encoder_type"])
+    model.load_state_dict(torch.load(os.path.join(config['save_dir'], 'model_state_dict.pth')))
     model.to(device)
+
 
     # Evaluate the model
 
@@ -200,7 +209,8 @@ def main():
     plt.savefig(os.path.join(config['save_dir'], 'mean_relative_error.png'))
 
     # Plot the trajectories
-    plot_trajectories(data_list_train, data_pred_list_train, ['Train'], os.path.join(config['save_dir'], 'trajectories.png'))
+    plot_trajectories(data_list_train, data_pred_list_train, 'Train', os.path.join(config['save_dir'], 'train_trajectories.png'))
+    plot_trajectories(data_list_test, data_pred_list_test, 'Test', os.path.join(config['save_dir'], 'test_trajectories.png'))
 
     # Save the results
     results = {

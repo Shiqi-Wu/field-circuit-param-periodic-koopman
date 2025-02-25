@@ -8,6 +8,7 @@ from tqdm import tqdm
 from src.args import parse_arguments, read_config_file
 from src.data import get_dataset
 from src.param_periodic_koopman import ParamBlockDiagonalKoopmanWithInputs3NetWorks
+import time
 
 def koopman_loss(model, x_true, params, inputs, sample_step=1):
     # 计算 x_dic_true
@@ -178,7 +179,10 @@ def main():
         params_dim = params.shape[-1]
         break
     
-    model = ParamBlockDiagonalKoopmanWithInputs3NetWorks(state_dim, config["dictionary_dim"], inputs_dim, params_dim, config["dictionary_layers"], config["Lambda_layers"], config["V_layers"], config["B_layers"])
+    if config["encoder_type"] == None:
+        config["encoder_type"] = "resnet"
+    
+    model = ParamBlockDiagonalKoopmanWithInputs3NetWorks(state_dim, config["dictionary_dim"], inputs_dim, params_dim, config["dictionary_layers"], config["Lambda_layers"], config["V_layers"], config["B_layers"], config["encoder_type"])
 
     model.to(device)
 
@@ -186,8 +190,24 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
     steplr = torch.optim.lr_scheduler.StepLR(optimizer, step_size=config["step_size_lr"], gamma=config["gamma_lr"])
 
+    log_file = os.path.join(save_dir, "log.txt")
+    with open(log_file, "w") as f:
+        f.write(f"Model: {model}\n")
+        f.write(f"Optimizer: {optimizer}\n")
+        f.write(f"StepLR: {steplr}\n")
+        f.write(f"Device: {device}\n")
+        f.write(f"Config: {config}\n")
+
     # Train the model
+    start_time = time.time()
     train_losses, test_losses, train_mse_losses, test_mse_losses, train_reg_losses, test_reg_losses= train(model, optimizer, steplr, train_loader, test_loader, device, config["epochs"], config["sample_step"])
+    end_time = time.time()
+
+    print(f"Training time: {end_time - start_time} seconds")
+
+    with open(log_file, "a") as f:
+        epoches = config["epochs"]
+        f.write(f"Training time for {epoches} epoches is: {end_time - start_time:.2f}s\n")
 
     # Save the model
     torch.save(model, os.path.join(save_dir, "model.pth"))

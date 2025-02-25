@@ -45,7 +45,8 @@ def evaluate_model(model, data_list, params_list, inputs_list, dataset, lidation
         data_psi_pred = torch.zeros(data.shape[0], data_psi_initail.shape[1])
         data_psi_pred[0] = data_psi_initail
         for i in range(1, data.shape[0]):
-            data_psi_pred[i] = model(data_psi_pred[i-1].unsqueeze(0), inputs_scaled[i-1:i :], params_scaled[i-1:i, :])
+            inputs_dic = model.u_dictionary(inputs_scaled[i-1:i, :])
+            data_psi_pred[i] = model(data_psi_pred[i-1].unsqueeze(0), inputs_dic, params_scaled[i-1:i, :])
 
         # print(data_pred.shape)
         data_pred = data_psi_pred[:, 1:pca_dim+1].detach().cpu()
@@ -163,7 +164,7 @@ def main():
     state_dim = pca_dim
     inputs_dim = 2
     params_dim = 2
-    model = ParamOrthogonalKoopmanWithInputs(state_dim, config["dictionary_dim"], inputs_dim, params_dim, config["dictionary_layers"], config["Q_layers"], config["T_layers"], config["B_layers"])
+    model = ParamOrthogonalKoopmanWithInputs(state_dim, config["dictionary_dim"], inputs_dim, config['u_dictionary_dim'], params_dim, config["dictionary_layers"], config['u_layers'], config["Q_layers"], config["T_layers"], config["B_layers"], dictionary_type = config['encoder_type'])
 
     model_dict = torch.load(os.path.join(config["save_dir"], "model_state_dict.pth"))
     model.load_state_dict(model_dict)
@@ -208,7 +209,8 @@ def main():
     plt.savefig(os.path.join(config['save_dir'], 'mean_relative_error.png'))
 
     # Plot the trajectories
-    plot_trajectories(data_list_train, data_pred_list_train, ['Train'], os.path.join(config['save_dir'], 'trajectories.png'))
+    plot_trajectories(data_list_train, data_pred_list_train, ['Train'], os.path.join(config['save_dir'], 'train_trajectories.png'))
+    plot_trajectories(data_list_test, data_pred_list_test, ['Test'], os.path.join(config['save_dir'], 'test_trajectories.png'))
 
     # Save the results
     results = {

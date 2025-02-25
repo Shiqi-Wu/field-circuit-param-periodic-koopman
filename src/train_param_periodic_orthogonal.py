@@ -1,4 +1,14 @@
 import torch
+
+print("CUDA available:", torch.cuda.is_available())
+print("CUDA device count:", torch.cuda.device_count())
+if torch.cuda.is_available():
+    print("CUDA current device:", torch.cuda.current_device())
+    print("CUDA device name:", torch.cuda.get_device_name(torch.cuda.current_device()))
+
+torch.cuda.empty_cache()  # 释放缓存
+torch.cuda.memory_reserved(0)  # 释放 PyTorch 预留但未使用的显存
+torch.cuda.memory_summary(device=0, abbreviated=False)  # 打印显存状态
 import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
@@ -17,12 +27,20 @@ def check_for_nan(model):
     return False
 
 
-def koopman_loss(model, x_true, params, inputs):
+def koopman_loss(model, x_true, params, inputs, sample_step=1):
     # 计算 x_dic_true
     x_dic_true = []
     for i in range(x_true.shape[1]):
-        x_dic_true.append(model.dictionary(x_true[:, i, :]))
+        x_dic_true.append(model.dictionary_V(x_true[:, i, :], params[:, i, :]))
     x_dic_true = torch.stack(x_dic_true, dim=1)  # [batch_size, sequence_length, feature_dim]
+
+    # 计算 u_dic_true
+    u_dic_true = []
+    for i in range(inputs.shape[1]):
+        u_dic_true.append(model.u_dictionary(inputs[:, i, :]))
+    u_dic_true = torch.stack(u_dic_true, dim=1)  # [batch_size, sequence_length, feature_dim]
+
+
     
     
     L = x_true.shape[1]
@@ -32,14 +50,18 @@ def koopman_loss(model, x_true, params, inputs):
     
     # 逐步预测后续值
     for l in range(L - 1):
-        next_pred = model(y_dic_pred[-1], inputs[:, l, :], params[:, l, :])
+        next_pred = model(y_dic_pred[-1], u_dic_true[:, l, :], params[:, l, :], sample_step)
         y_dic_pred.append(next_pred)  # 添加到列表中
     
     # 将预测值拼接成张量
     y_dic_pred = torch.stack(y_dic_pred, dim=1)  # [batch_size, sequence_length, feature_dim]
     
+    
     mse_loss = F.mse_loss(y_dic_pred, x_dic_true)
+
+
     return mse_loss
+
 
 
 def train_one_epoch(model, optimizer, train_loader, device, epoch, log_file):
@@ -138,10 +160,11 @@ def main():
         params_dim = params.shape[-1]
         break
     
-    model = ParamOrthogonalKoopmanWithInputs(state_dim, config["dictionary_dim"], inputs_dim, params_dim, config["dictionary_layers"], config["Q_layers"], config["T_layers"], config["B_layers"])
+    model = ParamOrthogonalKoopmanWithInputs(state_dim, config["dictionary_dim"], inputs_dim, config['u_dictionary_dim'], params_dim, config["dictionary_layers"], config['u_layers'], config["Q_layers"], config["T_layers"], config["B_layers"], dictionary_type = config['encoder_type'])
     model.B_matrix.resnet.initialize_weights_to_zero()
 
     model.to(device)
+    print(model)
     
 
     # Initialize the optimizer

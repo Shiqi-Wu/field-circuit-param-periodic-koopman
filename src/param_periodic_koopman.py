@@ -239,24 +239,29 @@ class ParamBlockTriangularMatrix(nn.Module):
 
 class ParamBlockDiagonalKoopmanWithInputs(nn.Module):
 
-    def __init__(self, state_dim, dictionary_dim, inputs_dim, params_dim, dictionary_layers, A_layers, B_layers):
+    def __init__(self, state_dim, dictionary_dim, inputs_dim, u_dictionary_dim, params_dim, dictionary_layers, u_layers, A_layers, B_layers, dictionary_type = "resnet"):
         super(ParamBlockDiagonalKoopmanWithInputs, self).__init__()
         self.state_dim = state_dim
         self.dictionary_dim = dictionary_dim
         self.inputs_dim = inputs_dim
+        self.u_dictionary_dim = u_dictionary_dim
         self.params_dim = params_dim
         self.dictionary_layers = dictionary_layers
+        self.u_layers = u_layers
         self.A_layers = A_layers
         self.B_layers = B_layers
+        self.dictionary_type = dictionary_type
         self.build()
 
     def build(self):
-        self.dictionary = TrainableDictionary(self.state_dim, self.dictionary_dim, self.dictionary_layers)
+        self.dictionary = TrainableDictionary(self.state_dim, self.dictionary_dim, self.dictionary_layers, encoder_type=self.dictionary_type)
+        self.u_dictionary = TrainableDictionary(self.inputs_dim, self.u_dictionary_dim, self.u_layers, encoder_type=self.dictionary_type)
         self.koopman_dim = self.dictionary_dim + self.state_dim + 1
         self.A_matrix = ParamBlockDiagonalMatrix(self.params_dim, self.koopman_dim, self.A_layers, BN = False)
-        self.B_matrix = ParamMatrix(self.params_dim, self.inputs_dim,self.koopman_dim, self.B_layers, BN = False)
+        self.u_dim = self.u_dictionary_dim + self.inputs_dim + 1
+        self.B_matrix = ParamMatrix(self.params_dim, self.u_dim,self.koopman_dim, self.B_layers, BN = False)
 
-    def forward(self, x_dic, inputs, params, sample_step=1):
+    def forward(self, x_dic, inputs_dic, params, sample_step=1):
         K, _ = self.A_matrix(params, sample_step)
         B = self.B_matrix(params)
 
@@ -266,17 +271,17 @@ class ParamBlockDiagonalKoopmanWithInputs(nn.Module):
 
         x_dic = x_dic.squeeze(1)  # Shape: (batch_size, koopman_dim)
 
-        inputs = inputs.unsqueeze(1)  # Shape: (batch_size, 1, inputs_dim)
-        inputs = torch.matmul(inputs, B)
-        inputs = inputs.squeeze(1)
+        inputs_dic = inputs_dic.unsqueeze(1)  # Shape: (batch_size, 1, inputs_dim)
+        inputs_dic = torch.matmul(inputs_dic, B)
+        inputs_dic = inputs_dic.squeeze(1)
 
-        results = x_dic + inputs
+        results = x_dic + inputs_dic
 
         return results
     
     def dictionary_V(self, x, params, sample_step=1):
         x_dic = self.dictionary(x)
-        K, V = self.A_matrix(params, sample_step)
+        _, V = self.A_matrix(params, sample_step)
         x_dic = x_dic.unsqueeze(1)
         x_dic = torch.matmul(x_dic, V)
         x_dic = x_dic.squeeze(1)
@@ -296,38 +301,47 @@ class ParamBlockDiagonalKoopmanWithInputs(nn.Module):
     
         # 解线性方程组近似逆范数
         b = torch.ones(V.shape[0], V.shape[1], 1, device=V.device)  # 假设列数相同
-        norm_V_inv = torch.linalg.solve(V, b).abs().sum(dim=(1, 2))  # 近似 1-范数的逆范数
+        V_inv_approx = torch.linalg.solve(V, b)
+        norm_V_inv = torch.norm(V_inv_approx, p=2, dim=(1, 2))
     
         # 条件数近似
         cond_number = norm_V * norm_V_inv
 
+        reg_loss = torch.log1p(cond_number).mean() - torch.log(torch.tensor(10.0, device=V.device))
+
+
         # ReLU 和 log 约束（避免极端值）
-        return 1 * F.relu(torch.log(cond_number).mean() - torch.log(torch.tensor(10.0, device=V.device))), norm_V_inv
+        return reg_loss.clamp(min=0.0), norm_V_inv
 
 
 
 class ParamBlockDiagonalKoopmanWithInputs3NetWorks(nn.Module):
 
-    def __init__(self, state_dim, dictionary_dim, inputs_dim, params_dim, dictionary_layers, Lambda_layers, V_layers, B_layers):
+    def __init__(self, state_dim, dictionary_dim, inputs_dim, u_dictionary_dim, params_dim, dictionary_layers, u_layers, Lambda_layers, V_layers, B_layers, dictionary_type = "resnet"):
         super(ParamBlockDiagonalKoopmanWithInputs3NetWorks, self).__init__()
         self.state_dim = state_dim
         self.dictionary_dim = dictionary_dim
         self.inputs_dim = inputs_dim
+        self.u_dictionary_dim = u_dictionary_dim
         self.params_dim = params_dim
         self.dictionary_layers = dictionary_layers
+        self.u_layers = u_layers
         self.Lambda_layers = Lambda_layers
         self.V_layers = V_layers
         self.B_layers = B_layers
+        self.dictionary_type = dictionary_type
         self.build()
 
     def build(self):
-        self.dictionary = TrainableDictionary(self.state_dim, self.dictionary_dim, self.dictionary_layers)
+        self.dictionary = TrainableDictionary(self.state_dim, self.dictionary_dim, self.dictionary_layers, encoder_type=self.dictionary_type)
+        self.u_dictionary = TrainableDictionary(self.inputs_dim, self.u_dictionary_dim, self.u_layers, encoder_type=self.dictionary_type)
         self.koopman_dim = self.dictionary_dim + self.state_dim + 1
         self.Lambda_matrix = ParamBlockDiagonalMatrixWoV(self.params_dim, self.koopman_dim, self.Lambda_layers, BN = False)
         self.V_matrix = ParamMatrix(self.params_dim, self.koopman_dim, self.koopman_dim, self.V_layers, BN = False)
-        self.B_matrix = ParamMatrix(self.params_dim, self.inputs_dim,self.koopman_dim, self.B_layers, BN = False)
+        self.u_dim = self.u_dictionary_dim + self.inputs_dim + 1
+        self.B_matrix = ParamMatrix(self.params_dim, self.u_dim, self.koopman_dim, self.B_layers, BN = False)
 
-    def forward(self, x_dic, inputs, params, sample_step=1):
+    def forward(self, x_dic, inputs_dic, params, sample_step=1):
         Lambda = self.Lambda_matrix(params, sample_step)
         B = self.B_matrix(params)
 
@@ -337,11 +351,11 @@ class ParamBlockDiagonalKoopmanWithInputs3NetWorks(nn.Module):
 
         x_dic = x_dic.squeeze(1)  # Shape: (batch_size, koopman_dim)
 
-        inputs = inputs.unsqueeze(1)  # Shape: (batch_size, 1, inputs_dim)
-        inputs = torch.matmul(inputs, B)
-        inputs = inputs.squeeze(1)
+        inputs_dic = inputs_dic.unsqueeze(1)  # Shape: (batch_size, 1, inputs_dim)
+        inputs_dic = torch.matmul(inputs_dic, B)
+        inputs_dic = inputs_dic.squeeze(1)
 
-        results = x_dic + inputs
+        results = x_dic + inputs_dic
 
         return results
     
@@ -377,24 +391,29 @@ class ParamBlockDiagonalKoopmanWithInputs3NetWorks(nn.Module):
 
 class ParamKoopmanWithInputs(nn.Module):
 
-    def __init__(self, state_dim, dictionary_dim, inputs_dim, params_dim, dictionary_layers, A_layers, B_layers):
+    def __init__(self, state_dim, dictionary_dim, inputs_dim, u_dictionary_dim, params_dim, dictionary_layers, u_layers, A_layers, B_layers, dictionary_type = "resnet"):
         super(ParamKoopmanWithInputs, self).__init__()
         self.state_dim = state_dim
         self.dictionary_dim = dictionary_dim
         self.inputs_dim = inputs_dim
+        self.u_dictionary_dim = u_dictionary_dim
         self.params_dim = params_dim
         self.dictionary_layers = dictionary_layers
+        self.u_layers = u_layers
         self.A_layers = A_layers
         self.B_layers = B_layers
+        self.dictionary_type = dictionary_type
         self.build()
 
     def build(self):
-        self.dictionary = TrainableDictionary(self.state_dim, self.dictionary_dim, self.dictionary_layers)
+        self.dictionary = TrainableDictionary(self.state_dim, self.dictionary_dim, self.dictionary_layers, encoder_type=self.dictionary_type)
+        self.u_dictionary = TrainableDictionary(self.inputs_dim, self.u_dictionary_dim, self.u_layers, encoder_type=self.dictionary_type)
         self.koopman_dim = self.dictionary_dim + self.state_dim + 1
         self.A_matrix = ParamMatrix(self.params_dim, self.koopman_dim, self.koopman_dim, self.A_layers, BN = False)
-        self.B_matrix = ParamMatrix(self.params_dim, self.inputs_dim,self.koopman_dim, self.B_layers, BN = False)
+        self.u_dim = self.u_dictionary_dim + self.inputs_dim + 1
+        self.B_matrix = ParamMatrix(self.params_dim, self.u_dim,self.koopman_dim, self.B_layers, BN = False)
 
-    def forward(self, x_dic, inputs, params):
+    def forward(self, x_dic, inputs_dic, params):
         A = self.A_matrix(params)
         B = self.B_matrix(params)
 
@@ -404,11 +423,11 @@ class ParamKoopmanWithInputs(nn.Module):
 
         x_dic = x_dic.squeeze(1)  # Shape: (batch_size, koopman_dim)
 
-        inputs = inputs.unsqueeze(1)  # Shape: (batch_size, 1, inputs_dim)
-        inputs = torch.matmul(inputs, B)
-        inputs = inputs.squeeze(1)
+        inputs_dic = inputs_dic.unsqueeze(1)  # Shape: (batch_size, 1, inputs_dim)
+        inputs_dic = torch.matmul(inputs_dic, B)
+        inputs_dic = inputs_dic.squeeze(1)
 
-        results = x_dic + inputs
+        results = x_dic + inputs_dic
 
         return results
     
@@ -417,39 +436,52 @@ class ParamKoopmanWithInputs(nn.Module):
         return x_dic
     
 class ParamOrthogonalKoopmanWithInputs(nn.Module):
-    def __init__(self, state_dim, dictionary_dim, inputs_dim, params_dim, dictionary_layers, Q_layers, T_layers, B_layers):
+    def __init__(self, state_dim, dictionary_dim, inputs_dim, u_dictionary_dim, params_dim, dictionary_layers, u_layers, Q_layers, T_layers, B_layers, dictionary_type = "resnet"):
         super(ParamOrthogonalKoopmanWithInputs, self).__init__()
         self.state_dim = state_dim
         self.dictionary_dim = dictionary_dim
         self.inputs_dim = inputs_dim
+        self.u_dictionary_dim = u_dictionary_dim
         self.params_dim = params_dim
         self.dictionary_layers = dictionary_layers
+        self.u_layers = u_layers
         self.Q_layers = Q_layers
         self.T_layers = T_layers
         self.B_layers = B_layers
+        self.dictionary_type = dictionary_type
         self.build()
 
     def build(self):
-        self.dictionary = TrainableDictionary(self.state_dim, self.dictionary_dim, self.dictionary_layers)
+        self.dictionary = TrainableDictionary(self.state_dim, self.dictionary_dim, self.dictionary_layers, encoder_type=self.dictionary_type)
+        self.u_dictionary = TrainableDictionary(self.inputs_dim, self.u_dictionary_dim, self.u_layers, encoder_type=self.dictionary_type)
         self.koopman_dim = self.dictionary_dim + self.state_dim + 1
+        self.u_dim = self.u_dictionary_dim + self.inputs_dim + 1
         self.Q_matrix = ParamSpecialOrthogonalMatrix(self.params_dim, self.koopman_dim, self.Q_layers, BN = False)
-        self.T_matrix = ParamBlockDiagonalMatrixWoV(self.params_dim, self.koopman_dim, self.T_layers, BN = False)
-        self.B_matrix = ParamMatrix(self.params_dim, self.inputs_dim,self.koopman_dim, self.B_layers, BN = False)
+        self.Lambda_matrix = ParamBlockDiagonalMatrixWoV(self.params_dim, self.koopman_dim, self.T_layers, BN = False)
+        self.B_matrix = ParamMatrix(self.params_dim, self.u_dim,self.koopman_dim, self.B_layers, BN = False)
 
-    def forward(self, x_dic, inputs, params):
-        Q = self.Q_matrix(params)
-        T = self.T_matrix(params)
+    def forward(self, x_dic, inputs_dic, params, sample_step = 1):
+        K = self.Lambda_matrix(params, sample_step)
         B = self.B_matrix(params)
 
         # Expand dimensions of x_dic to match K and V for batch matrix multiplication
         x_dic = x_dic.unsqueeze(1)
-        x_dic = torch.matmul(x_dic, Q)
-        x_dic = torch.matmul(x_dic, T)
-        x_dic = torch.matmul(x_dic, Q.transpose(1, 2))
+        x_dic = torch.matmul(x_dic, K)
+        x_dic = x_dic.squeeze(1)
 
-        inputs = inputs.unsqueeze(1)
-        inputs = torch.matmul(inputs, B)
+        inputs_dic = inputs_dic.unsqueeze(1)  # Shape: (batch_size, 1, inputs_dim)
+        inputs_dic = torch.matmul(inputs_dic, B)
+        inputs_dic = inputs_dic.squeeze(1)
 
-        results = x_dic + inputs
+        results = x_dic + inputs_dic
+
         results = results.squeeze(1)
         return results
+    
+    def dictionary_V(self, x, params):
+        x_dic = self.dictionary(x)
+        V = self.Q_matrix(params)
+        x_dic = x_dic.unsqueeze(1)
+        x_dic = torch.matmul(x_dic, V)
+        x_dic = x_dic.squeeze(1)
+        return x_dic

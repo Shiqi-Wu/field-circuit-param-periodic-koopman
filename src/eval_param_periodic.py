@@ -22,8 +22,6 @@ custom_palette = [
 ]
 
 import torch
-
-import torch
 import numpy as np
 
 def evaluate_model(model, data_list, params_list, inputs_list, dataset, sample_step=1):
@@ -46,22 +44,22 @@ def evaluate_model(model, data_list, params_list, inputs_list, dataset, sample_s
         params = torch.tensor(params).to(device)
         inputs = torch.tensor(inputs).to(device)
 
-        print(f"Data shape: {data.shape}, Params shape: {params.shape}, Inputs shape: {inputs.shape}")
-        if torch.isnan(data).any():
-            print("Warning: NaN detected in `data`!")
-        if torch.isnan(params).any():
-            print("Warning: NaN detected in `params`!")
-        if torch.isnan(inputs).any():
-            print("Warning: NaN detected in `inputs`!")
+        # print(f"Data shape: {data.shape}, Params shape: {params.shape}, Inputs shape: {inputs.shape}")
+        # if torch.isnan(data).any():
+        #     print("Warning: NaN detected in `data`!")
+        # if torch.isnan(params).any():
+        #     print("Warning: NaN detected in `params`!")
+        # if torch.isnan(inputs).any():
+        #     print("Warning: NaN detected in `inputs`!")
 
         # PCA transformation
         data_initial = data[0].unsqueeze(0)
-        print(f"Initial data shape before PCA: {data_initial.shape}")
+        # print(f"Initial data shape before PCA: {data_initial.shape}")
 
         data_initial = dataset._pca_transform(data_initial)
-        print(f"Initial data shape after PCA: {data_initial.shape}")
-        if np.isnan(data_initial).any():
-            print("Warning: NaN detected in `data_initial` after PCA transformation!")
+        # print(f"Initial data shape after PCA: {data_initial.shape}")
+        # if np.isnan(data_initial).any():
+            # print("Warning: NaN detected in `data_initial` after PCA transformation!")
 
         pca_dim = data_initial.shape[1]
 
@@ -69,65 +67,66 @@ def evaluate_model(model, data_list, params_list, inputs_list, dataset, sample_s
         params_scaled = dataset._transform_data(params, dataset.params_mean, dataset.params_std)
         inputs_scaled = dataset._transform_data(inputs, dataset.inputs_mean, dataset.inputs_std)
 
-        print(f"Params_scaled shape: {params_scaled.shape}, Inputs_scaled shape: {inputs_scaled.shape}")
-        if np.isnan(params_scaled).any():
-            print("Warning: NaN detected in `params_scaled`!")
-        if np.isnan(inputs_scaled).any():
-            print("Warning: NaN detected in `inputs_scaled`!")
+        # print(f"Params_scaled shape: {params_scaled.shape}, Inputs_scaled shape: {inputs_scaled.shape}")
+        # if np.isnan(params_scaled).any():
+        #     print("Warning: NaN detected in `params_scaled`!")
+        # if np.isnan(inputs_scaled).any():
+        #     print("Warning: NaN detected in `inputs_scaled`!")
 
         # Compute initial dictionary representation
         data_psi_initial = model.dictionary_V(data_initial, params_scaled[0:1, :])
-        print(f"Initial dictionary representation shape: {data_psi_initial.shape}")
-        if torch.isnan(data_psi_initial).any():
-            print("Warning: NaN detected in `data_psi_initial`!")
+        # print(f"Initial dictionary representation shape: {data_psi_initial.shape}")
+        # if torch.isnan(data_psi_initial).any():
+        #     print("Warning: NaN detected in `data_psi_initial`!")
 
         # Initialize prediction storage
         data_psi_pred = torch.zeros(data.shape[0], data_psi_initial.shape[1])
         data_psi_pred[0] = data_psi_initial
 
+
         # Iteratively predict
         for i in range(1, data.shape[0]):
+            inputs_dic = model.u_dictionary(inputs_scaled[i-1:i, :])
             data_psi_pred[i] = model(data_psi_pred[i-1].unsqueeze(0), 
-                                     inputs_scaled[i-1:i, :], 
+                                     inputs_dic, 
                                      params_scaled[i-1:i, :], 
                                      sample_step)
-            if torch.isnan(data_psi_pred[i]).any():
-                print(f"Warning: NaN detected in `data_psi_pred[{i}]`!")
+        #     if torch.isnan(data_psi_pred[i]).any():
+        #         print(f"Warning: NaN detected in `data_psi_pred[{i}]`!")
 
-        print(f"data_psi_pred shape after loop: {data_psi_pred.shape}")
+        # print(f"data_psi_pred shape after loop: {data_psi_pred.shape}")
 
         # Compute inverse transformation
         _, V = model.A_matrix(params_scaled[0:1, :])
-        print(f"V shape before squeeze: {V.shape}")
+        # print(f"V shape before squeeze: {V.shape}")
 
         V = V.squeeze(0)
-        print(f"V shape after squeeze: {V.shape}")
-        if torch.isnan(V).any():
-            print("Warning: NaN detected in `V`!")
+        # print(f"V shape after squeeze: {V.shape}")
+        # if torch.isnan(V).any():
+        #     print("Warning: NaN detected in `V`!")
 
         V_inv = torch.inverse(V)
-        print(f"V_inv shape: {V_inv.shape}")
-        if torch.isnan(V_inv).any():
-            print("Warning: NaN detected in `V_inv`!")
+        # print(f"V_inv shape: {V_inv.shape}")
+        # if torch.isnan(V_inv).any():
+        #     print("Warning: NaN detected in `V_inv`!")
 
         # Transform back to original space
         data_pred = torch.mm(data_psi_pred, V_inv)
-        print(f"Data_pred shape before slicing: {data_pred.shape}")
-        if torch.isnan(data_pred).any():
-            print("Warning: NaN detected in `data_pred` before slicing!")
+        # print(f"Data_pred shape before slicing: {data_pred.shape}")
+        # if torch.isnan(data_pred).any():
+        #     print("Warning: NaN detected in `data_pred` before slicing!")
 
         data_pred = data_pred[:, 1:pca_dim+1].detach().cpu()
-        print(f"Data_pred shape after slicing: {data_pred.shape}")
-        if torch.isnan(data_pred).any():
-            print("Warning: NaN detected in `data_pred` after slicing!")
+        # print(f"Data_pred shape after slicing: {data_pred.shape}")
+        # if torch.isnan(data_pred).any():
+        #     print("Warning: NaN detected in `data_pred` after slicing!")
 
         data_pred = dataset._inverse_pca_transform(data_pred).numpy()
-        print(f"Data_pred shape after inverse PCA: {data_pred.shape}")
-        if np.isnan(data_pred).any():
-            print("Warning: NaN detected in `data_pred` after inverse PCA transformation!")
+        # print(f"Data_pred shape after inverse PCA: {data_pred.shape}")
+        # if np.isnan(data_pred).any():
+        #     print("Warning: NaN detected in `data_pred` after inverse PCA transformation!")
 
         data_pred_list.append(data_pred)
-        break
 
     print("\nEvaluation completed.")
     
@@ -250,8 +249,12 @@ def main():
     plt.savefig(os.path.join(config["save_dir"], "reg_losses.png"))
 
     # Load the model
-    model = torch.load(os.path.join(config["save_dir"], "model.pth"))
+    state_dim = config['pca_dim']
+    inputs_dim, params_dim = config['inputs_dim'], config['params_dim']
+    model = ParamBlockDiagonalKoopmanWithInputs(state_dim, config["dictionary_dim"], inputs_dim, config["u_dictionary_dim"], params_dim, config["dictionary_layers"], config["u_layers"], config["A_layers"], config["B_layers"], config["encoder_type"])
+    model.load_state_dict(torch.load(os.path.join(config['save_dir'], 'model_state_dict.pth')))
     model.to(device)
+
 
     # Evaluate the model
 
@@ -292,7 +295,8 @@ def main():
     plt.savefig(os.path.join(config['save_dir'], 'mean_relative_error.png'))
 
     # Plot the trajectories
-    plot_trajectories(data_list_train, data_pred_list_train, ['Train'], os.path.join(config['save_dir'], 'trajectories.png'))
+    plot_trajectories(data_list_train, data_pred_list_train, ['Train'], os.path.join(config['save_dir'], 'train_trajectories.png'))
+    plot_trajectories(data_list_test, data_pred_list_test, ['Test'], os.path.join(config['save_dir'], 'test_trajectories.png'))
 
     # Save the results
     results = {

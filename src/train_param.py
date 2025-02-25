@@ -8,6 +8,7 @@ from tqdm import tqdm
 from src.args import parse_arguments, read_config_file
 from src.data import get_dataset
 from src.param_periodic_koopman import ParamKoopmanWithInputs
+import time
 
 
 def koopman_loss(model, x_true, params, inputs):
@@ -19,13 +20,20 @@ def koopman_loss(model, x_true, params, inputs):
     
     
     L = x_true.shape[1]
+
+    # 计算 u_dic_true
+    u_dic_true = []
+    for i in range(inputs.shape[1]):
+        u_dic_true.append(model.u_dictionary(inputs[:, i, :]))
+    u_dic_true = torch.stack(u_dic_true, dim=1)  # [batch_size, sequence_length, feature_dim]
+
     
     # 初始化 y_dic_pred，确保计算图不被切断
     y_dic_pred = [x_dic_true[:, 0, :]]  # 用列表保存序列，避免 inplace 操作
     
     # 逐步预测后续值
     for l in range(L - 1):
-        next_pred = model(y_dic_pred[-1], inputs[:, l, :], params[:, l, :])
+        next_pred = model(y_dic_pred[-1], u_dic_true[:, l, :], params[:, l, :])
         y_dic_pred.append(next_pred)  # 添加到列表中
     
     # 将预测值拼接成张量
@@ -137,8 +145,11 @@ def main():
         inputs_dim = inputs.shape[-1]
         params_dim = params.shape[-1]
         break
+
+    if config["encoder_type"] == None:
+        config["encoder_type"] = "resnet"
     
-    model = ParamKoopmanWithInputs(state_dim, config["dictionary_dim"], inputs_dim, params_dim, config["dictionary_layers"], config["A_layers"], config["B_layers"])
+    model = ParamKoopmanWithInputs(state_dim, config["dictionary_dim"], inputs_dim, config["u_dictionary_dim"], params_dim, config["dictionary_layers"], config["u_layers"], config["A_layers"], config["B_layers"], config["encoder_type"])
 
     model.to(device)
 
@@ -146,11 +157,31 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
     steplr = torch.optim.lr_scheduler.StepLR(optimizer, step_size=config["step_size_lr"], gamma=config["gamma_lr"])
 
+    # Save the configurations
+    log_file = os.path.join(save_dir, "log.txt")
+    with open(log_file, "w") as f:
+        f.write(f"Model: {model}\n")
+        f.write(f"Optimizer: {optimizer}\n")
+        f.write(f"StepLR: {steplr}\n")
+        f.write(f"Device: {device}\n")
+        f.write(f"Config: {config}\n")
+
+
     # Train the model
+    start_time = time.time()
     train_losses, test_losses = train(model, optimizer, steplr, train_loader, test_loader, device, config["epochs"])
+    end_time = time.time()
+    print(f"Training time: {end_time - start_time} seconds")
+
+    with open(log_file, "a") as f:
+        epoches = config["epochs"]
+        f.write(f"Training time for {epoches} epoches is: {end_time - start_time:.2f}s\n")
+
+
+    
 
     # Save the model
-    torch.save(model, os.path.join(save_dir, "model.pth"))
+    torch.save(model.state_dict(), os.path.join(save_dir, "model_state_dict.pth"))
 
     # Save the losses
     losses = {"train_losses": train_losses, "test_losses": test_losses}

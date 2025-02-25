@@ -1,0 +1,22 @@
+save_dir: '/home/shiqi_w/code/field-circuit-param-periodic-koopman/results/Orthogonal/experiment_2_same'
+data_dir: '/home/shiqi_w/code/field-circuit-param-periodic-koopman/data/Mur1000Js1.2'
+step_size: 10
+sample_step: 1
+pca_dim: 4
+inputs_dim: 2
+params_dim: 2
+batch_size: 64
+validation_split: 0.2
+dictionary_dim: 45
+dictionary_layers: [64, 128, 6]
+u_dictionary_dim: 20
+u_layers: [64, 64, 6]
+Q_layers: [2, 2, 2]
+T_layers: [2, 2, 2]
+B_layers: [2, 2, 2]
+lr: 0.001
+step_size_lr: 200
+gamma_lr: 0.9
+epochs: 1000
+encoder_type: 'Transformer_like'
+Description: 'This is the same as experiment_1_same, but with a different dictionary. The dictionary is the same with previous work, with a transformer-like encoder. Also, a input encoder is consrtructed.'

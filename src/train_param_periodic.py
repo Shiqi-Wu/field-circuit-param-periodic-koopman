@@ -16,6 +16,14 @@ def koopman_loss(model, x_true, params, inputs, sample_step=1):
     for i in range(x_true.shape[1]):
         x_dic_true.append(model.dictionary_V(x_true[:, i, :], params[:, i, :],sample_step))
     x_dic_true = torch.stack(x_dic_true, dim=1)  # [batch_size, sequence_length, feature_dim]
+
+    # 计算 u_dic_true
+    u_dic_true = []
+    for i in range(inputs.shape[1]):
+        u_dic_true.append(model.u_dictionary(inputs[:, i, :]))
+    u_dic_true = torch.stack(u_dic_true, dim=1)  # [batch_size, sequence_length, feature_dim]
+
+
     
     
     L = x_true.shape[1]
@@ -25,7 +33,7 @@ def koopman_loss(model, x_true, params, inputs, sample_step=1):
     
     # 逐步预测后续值
     for l in range(L - 1):
-        next_pred = model(y_dic_pred[-1], inputs[:, l, :], params[:, l, :], sample_step)
+        next_pred = model(y_dic_pred[-1], u_dic_true[:, l, :], params[:, l, :], sample_step)
         y_dic_pred.append(next_pred)  # 添加到列表中
     
     # 将预测值拼接成张量
@@ -187,8 +195,12 @@ def main():
         inputs_dim = inputs.shape[-1]
         params_dim = params.shape[-1]
         break
+
+    if config["encoder_type"] == None:
+        config["encoder_type"] = "resnet"
     
-    model = ParamBlockDiagonalKoopmanWithInputs(state_dim, config["dictionary_dim"], inputs_dim, params_dim, config["dictionary_layers"], config["A_layers"], config["B_layers"])
+    
+    model = ParamBlockDiagonalKoopmanWithInputs(state_dim, config["dictionary_dim"], inputs_dim, config["u_dictionary_dim"], params_dim, config["dictionary_layers"], config["u_layers"], config["A_layers"], config["B_layers"], config["encoder_type"])
     model.B_matrix.resnet.initialize_weights_to_zero()
 
     model.to(device)
