@@ -8,7 +8,7 @@ import os
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-def evaluate_model(model, params_list, dataset):
+def evaluate_model_VB(model, params_list, dataset):
     device = torch.device("cpu")
 
     matrix_V = []
@@ -67,8 +67,8 @@ def main():
 
     data_list_train, params_list_train, inputs_list_train, data_list_test, params_list_test, inputs_list_test, dataset = get_evaluation_dataset(config['data_dir'], config['save_dir'], config['validation_split'])
 
-    matrix_V_train, matrix_B_train, matrix_V_inv_train = evaluate_model(model, params_list_train, dataset)
-    matrix_V_test, matrix_B_test, matrix_V_inv_test = evaluate_model(model, params_list_test, dataset)
+    matrix_V_train, matrix_B_train, matrix_V_inv_train = evaluate_model_VB(model, params_list_train, dataset)
+    matrix_V_test, matrix_B_test, matrix_V_inv_test = evaluate_model_VB(model, params_list_test, dataset)
 
     np.save(os.path.join(config['save_dir'], 'matrix_V_train.npy'), matrix_V_train)
     np.save(os.path.join(config['save_dir'], 'matrix_B_train.npy'), matrix_B_train)

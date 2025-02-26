@@ -10,38 +10,39 @@ from src.data import get_dataset
 from src.param_periodic_koopman import ParamKoopmanWithInputs
 import time
 
-
 def koopman_loss(model, x_true, params, inputs):
+    """
+    计算 Koopman 预测损失。
+    :param model: 训练的模型
+    :param x_true: 真实状态 [batch_size, sequence_length, feature_dim]
+    :param params: 系统参数 [batch_size, sequence_length, param_dim]
+    :param inputs: 控制输入 [batch_size, sequence_length, input_dim]
+    :return: MSE 损失
+    """
+    
+    _, L, _ = x_true.shape
+
     # 计算 x_dic_true
-    x_dic_true = []
-    for i in range(x_true.shape[1]):
-        x_dic_true.append(model.dictionary(x_true[:, i, :]))
-    x_dic_true = torch.stack(x_dic_true, dim=1)  # [batch_size, sequence_length, feature_dim]
-    
-    
-    L = x_true.shape[1]
+    x_dic_true = torch.stack([model.dictionary(x_true[:, i, :]) for i in range(L)], dim=1)
 
     # 计算 u_dic_true
-    u_dic_true = []
-    for i in range(inputs.shape[1]):
-        u_dic_true.append(model.u_dictionary(inputs[:, i, :]))
-    u_dic_true = torch.stack(u_dic_true, dim=1)  # [batch_size, sequence_length, feature_dim]
+    u_dic_true = torch.stack([model.u_dictionary(inputs[:, i, :]) for i in range(L)], dim=1)
 
-    
-    # 初始化 y_dic_pred，确保计算图不被切断
-    y_dic_pred = [x_dic_true[:, 0, :]]  # 用列表保存序列，避免 inplace 操作
-    
-    # 逐步预测后续值
+    # 初始化 y_dic_pred
+    y_dic_pred = [x_dic_true[:, 0, :]]  # 设初始值
+
+    # 逐步预测
     for l in range(L - 1):
-        next_pred = model(y_dic_pred[-1], u_dic_true[:, l, :], params[:, l, :])
-        y_dic_pred.append(next_pred)  # 添加到列表中
-    
-    # 将预测值拼接成张量
+        next_pred = model(y_dic_pred[-1], u_dic_true[:, l, :], params[:, l, :])  # 用 l 计算 l+1
+        y_dic_pred.append(next_pred)
+
+    # 拼接预测结果
     y_dic_pred = torch.stack(y_dic_pred, dim=1)  # [batch_size, sequence_length, feature_dim]
-    
-    # 计算损失
+
+    # 计算 MSE 损失
     mse_loss = F.mse_loss(y_dic_pred, x_dic_true)
     return mse_loss
+
 
 
 def train_one_epoch(model, optimizer, train_loader, device, epoch):
