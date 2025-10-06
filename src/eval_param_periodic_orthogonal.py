@@ -79,6 +79,11 @@ def evaluate_model(model, data_list, params_list, inputs_list, dataset, sample_s
         params = torch.tensor(params).to(device)
         inputs = torch.tensor(inputs).to(device)
 
+        print(params.shape, dataset.params_mean.shape, dataset.params_std.shape)
+        print(inputs.shape, dataset.inputs_mean.shape, dataset.inputs_std.shape)
+        print(data.shape, dataset.data_mean.shape, dataset.data_std.shape)
+
+
         # PCA transformation
         data_initial = data[0].unsqueeze(0)
         # print(f"Initial data shape before PCA: {data_initial.shape}")

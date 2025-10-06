@@ -104,7 +104,7 @@ class CustomDataset(Dataset):
         return [self._inverse_pca_transform(d) for d in data_pca_list]
 
     def _fit_transform_data_list(self, data_list, epsilon=1e-8):
-        data = torch.cat([d.unsqueeze(0) for d in data_list], dim=0)
+        data = torch.cat(data_list, dim=0)
         data_mean = data.mean(dim=0)
         data_std = data.std(dim=0)
         data_std[data_std < epsilon] = 1
@@ -140,41 +140,61 @@ class CustomDataset(Dataset):
 
 def get_dataset(data_dir, step_size, pca_dim, batch_size=256, validation_split=0.2):
     data_list, params_list, inputs_list = [], [], []
+
     for file in os.listdir(data_dir):
         if file.endswith('.npy'):
-            ff = np.load(os.path.join(data_dir, file), allow_pickle=True)
-            ff = ff.item()
+            ff = np.load(os.path.join(data_dir, file), allow_pickle=True).item()
 
-            data_list.append(ff['data'])
-            params_list.append(ff['params'])
-            inputs_list.append(ff['inputs'])
+            # 获取单个 trajectory 数据
+            data = ff['data']
+            params = ff['params']
+            inputs = ff['inputs']
 
+            # 计算分割点：前 2/3 用于训练和测试，后 1/3 作为 evaluation
+            split_index = int(len(data) * (2 / 3))
+
+            # 只取前 2/3 进行 train/test 随机划分
+            data_list.append(data[:split_index])
+            params_list.append(params[:split_index])
+            inputs_list.append(inputs[:split_index])
+
+    # 在前 2/3 数据中进行 train-test 随机划分
     data_list_train, data_list_test, params_list_train, params_list_test, inputs_list_train, inputs_list_test = train_test_split(
-        data_list, params_list, inputs_list, test_size=validation_split, random_state=42)
+        data_list, params_list, inputs_list, test_size=validation_split, random_state=42
+    )
 
+    # 创建数据集
     dataset = CustomDataset()
-    # training_data, training_params, training_inputs = dataset._build_training_dataset(data_list_train, params_list_train, inputs_list_train, step_size, pca_dim)
-    training_data, training_params, training_inputs = dataset._build_training_dataset(data_list_train, params_list_train, inputs_list_train, step_size, pca_dim)
-    testing_data, testing_params, testing_inputs = dataset._build_testing_dataset(data_list_test, params_list_test, inputs_list_test, step_size)
-    # print(training_inputs[0])
-    # print(testing_inputs[0])
+    training_data, training_params, training_inputs = dataset._build_training_dataset(
+        data_list_train, params_list_train, inputs_list_train, step_size, pca_dim
+    )
+    testing_data, testing_params, testing_inputs = dataset._build_testing_dataset(
+        data_list_test, params_list_test, inputs_list_test, step_size
+    )
 
+    # 转换为 Tensor
     training_data = torch.tensor(training_data, dtype=torch.float64)
     training_params = torch.tensor(training_params, dtype=torch.float64)
     training_inputs = torch.tensor(training_inputs, dtype=torch.float64)
     testing_data = torch.tensor(testing_data, dtype=torch.float64)
     testing_params = torch.tensor(testing_params, dtype=torch.float64)
     testing_inputs = torch.tensor(testing_inputs, dtype=torch.float64)
+
+    # Shuffle 训练集
     indices = torch.randperm(training_data.size(0))
     training_data = training_data[indices]
     training_params = training_params[indices]
     training_inputs = training_inputs[indices]
+
+    # 创建 DataLoader
     training_dataset = torch.utils.data.TensorDataset(training_data, training_params, training_inputs)
     testing_dataset = torch.utils.data.TensorDataset(testing_data, testing_params, testing_inputs)
     training_loader = torch.utils.data.DataLoader(training_dataset, batch_size=batch_size, shuffle=True)
     testing_loader = torch.utils.data.DataLoader(testing_dataset, batch_size=batch_size, shuffle=False)
 
+    # 返回数据加载器和 dataset，后 1/3 作为 future eval data
     return training_loader, testing_loader, dataset
+
 
 def get_evaluation_dataset(data_dir, save_dir, validation_split=0.2):
     data_list, params_list, inputs_list = [], [], []

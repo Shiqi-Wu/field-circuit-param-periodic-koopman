@@ -1,0 +1,21 @@
+save_dir: '/home/shiqi_w/code/field-circuit-param-periodic-koopman/results/Plain/experiment_6_different'
+data_dir: '/home/shiqi_w/code/field-circuit-param-periodic-koopman/data/differentMur'
+step_size: 20
+sample_step: 1
+pca_dim: 6
+inputs_dim: 2
+params_dim: 2
+batch_size: 512
+validation_split: 0.2
+dictionary_dim: 45
+dictionary_layers: [64, 128, 6]
+u_dictionary_dim: 20
+u_layers: [64, 64, 6]
+A_layers: [1, 1, 1]
+B_layers: [1, 1, 1]
+lr: 0.001
+step_size_lr: 400
+gamma_lr: 0.9
+epochs: 7000
+encoder_type: 'Transformer_like'
+Description: '为了防止过拟合，我减少了operater network的自由度（六层降低为3层），并且我将pca_dim由4改成了6.这里的各项参数看似与5相似但是实验数据进行了增加，并且每条traj都只用了前三分之二，后三分之一留作测试。'

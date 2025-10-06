@@ -178,6 +178,7 @@ def main():
         f.write(f"StepLR: {steplr}\n")
         f.write(f"Device: {device}\n")
         f.write(f"Config: {config}\n")
+        f.write(f"Dataset_scaler: {dataset}\n")
 
     # Train the model
     start_time = time.time()

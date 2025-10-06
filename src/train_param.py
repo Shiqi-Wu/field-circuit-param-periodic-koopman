@@ -138,6 +138,8 @@ def main():
 
     train_loader, test_loader, dataset = get_dataset(data_dir, step_size, pca_dim, batch_size, validation_split)
 
+
+
     torch.save(dataset, os.path.join(save_dir, "dataset.pth"))
     
     # Initialize the model
@@ -151,6 +153,8 @@ def main():
         config["encoder_type"] = "resnet"
     
     model = ParamKoopmanWithInputs(state_dim, config["dictionary_dim"], inputs_dim, config["u_dictionary_dim"], params_dim, config["dictionary_layers"], config["u_layers"], config["A_layers"], config["B_layers"], config["encoder_type"])
+    model.A_matrix.initialize_to_zero()
+    model.B_matrix.initialize_to_zero()
 
     model.to(device)
 
@@ -166,6 +170,7 @@ def main():
         f.write(f"StepLR: {steplr}\n")
         f.write(f"Device: {device}\n")
         f.write(f"Config: {config}\n")
+        f.write(f"Dataset_scaler: {dataset}\n")
 
 
     # Train the model

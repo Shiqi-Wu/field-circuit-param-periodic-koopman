@@ -1,2 +1,2 @@
-data_dir: "/home/shiqi/code/Project2-sensor-case/Argos/data/data_Js1000Mur1.2"
-save_dir: "/home/shiqi/code/Project2-sensor-case/field-circuit-param-periodic-koopman/data/Js1000Mur1.2"
+data_dir: "/home/shiqi_w/code/Argos/data/data_differentMur2"
+save_dir: "/home/shiqi_w/code/field-circuit-param-periodic-koopman/data/differentMur"

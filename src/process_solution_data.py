@@ -23,15 +23,17 @@ def read_data_from_txt(file_path):
 
 def read_data(config):
     data_dir = config['data_dir']
-    pattern = r"Ip=200sin\(2pi(\d+\.\d+)time\)\+200cos\(2pi(\d+\.\d+)time\)Mur=(\d+)Js=(\d+\.\d+)\.MT3D\.RawSolution$"
+    pattern = r"Ip=200sin\(2pi(\d+\.\d+)time\)\+200cos\(2pi(\d+\.\d+)time\)Mur=(\d+\.\d+)Js=(\d+\.\d+)\.MT3D\.RawSolution$"
+
     for item in os.listdir(data_dir):
+        print(f"Checking folder: {item}")
         full_dir_path = os.path.join(data_dir, item)
         if os.path.isdir(full_dir_path):
-            match = re.search(pattern, full_dir_path)
+            match = re.fullmatch(pattern, item)  # 改为只匹配文件夹名
             if match:
                 f1 = float(match.group(1))
                 f2 = float(match.group(2))
-                mur = int(match.group(3))
+                mur = float(match.group(3))  # 之前是 int，应该是 float
                 js = float(match.group(4))
                 print(f"Found folder: {item}, with f1 = {f1}, f2 = {f2}, mur = {mur}, js = {js}")
             else:

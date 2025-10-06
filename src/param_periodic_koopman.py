@@ -33,6 +33,12 @@ class ParamMatrix(nn.Module):
         x = x.view(-1, self.matric_dim_1, self.matric_dim_2)
         return x
     
+    def initialize_to_zero(self):
+        for m in self.resnet.modules():
+            if isinstance(m, nn.Linear):
+                m.weight.data.zero_()
+                m.bias.data.zero_()
+    
 class ParamBlockDiagonalMatrix(nn.Module):
 
     def __init__(self, input_dim, matric_dim, layers, BN = True):
